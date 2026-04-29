@@ -13,19 +13,33 @@ description: >-
 
 This skill takes a product manager from zero to a personal library of Jira ticket templates by analyzing the tickets they've already written. It is project-agnostic — works with any Jira project at any company.
 
+**Platform note for all questions in this skill:**
+- **Claude Code** — call the `AskUserQuestion` tool with the parameters specified at each step
+- **Cursor / Codex** — present the same options as a numbered list in chat; never say "press enter" — always require the user to type a number or reply with the option name
+
 ## Phase 0: Detect Platform and Re-Run Check
 
-**Detect the platform** the user is on. Look for clues in environment, MCP server names, or ask:
-"Which AI tool are you running this in?
-- Claude Code
-- Cursor
-- Codex"
+**Detect the platform** the user is on. Look for clues in environment or MCP server names first. If you can't determine it, use AskUserQuestion:
 
-**Check for an existing config** at `~/.ticket-templates/config.yaml`. If it exists, read it and ask:
-"I found a saved config from a previous run. Want to:
-1. **Continue** with the same Jira project and output folder
-2. **Refresh** existing templates (re-analyze and overwrite)
-3. **Start fresh** with new project / folder"
+**Use AskUserQuestion:**
+- question: "Which AI tool are you running this in?"
+- header: "Platform"
+- multiSelect: false
+- options:
+  - label: "Claude Code", description: "The Anthropic CLI or desktop app"
+  - label: "Cursor", description: "The AI code editor"
+  - label: "Codex", description: "OpenAI's coding agent"
+
+**Check for an existing config** at `~/.ticket-templates/config.yaml`. If it exists, read it and use AskUserQuestion:
+
+**Use AskUserQuestion:**
+- question: "I found a saved config from a previous run. What do you want to do?"
+- header: "Re-run mode"
+- multiSelect: false
+- options:
+  - label: "Continue", description: "Use the same Jira project and output folder"
+  - label: "Refresh", description: "Re-analyze tickets and overwrite existing templates"
+  - label: "Start fresh", description: "Pick a new project or folder"
 
 If continuing or refreshing, skip questions in later phases that the config already answers.
 
@@ -41,12 +55,15 @@ Tool: getAccessibleAtlassianResources (or similar account-info tool from the Atl
 
 If no account-info tool exists, run a tiny `searchJiraIssuesUsingJql` query (`maxResults: 1`) and pull the user info from the response.
 
-Show the user:
-"✓ Atlassian MCP is connected.
-Account: `<email>`
-Sites: `<site-list>`
+Show the account details, then use AskUserQuestion:
 
-Is this the right account? (yes / no)"
+**Use AskUserQuestion:**
+- question: "✓ Atlassian MCP is connected. Account: `<email>` / Sites: `<site-list>`. Is this the right account?"
+- header: "Account"
+- multiSelect: false
+- options:
+  - label: "Yes, continue", description: "Proceed with this account"
+  - label: "No, wrong account", description: "I'll help you switch accounts"
 
 **If the tool is NOT available**, walk the user through setup based on their platform. Use WebFetch to pull the most current Atlassian Remote MCP setup instructions for that platform from these URLs:
 - Claude Code: `https://support.atlassian.com/rovo/docs/setting-up-ides-for-the-atlassian-remote-mcp-server/` (look for the Claude Code section)
@@ -60,19 +77,27 @@ If the Atlassian docs have changed since this skill was written, trust the docs 
 
 ## Phase 2: Project Selection
 
-Ask:
+Ask in chat:
 "Which Jira project do you want to use? Give me the project key (e.g. `DQLS`, `PROJ`, `MYTEAM`)."
 
 If the user gives a name instead of a key, query Jira to find the matching project key.
 
 ## Phase 3: Output Folder
 
-Ask:
-"Where should I save your tickets and templates?
-- Type a folder path (absolute or relative)
-- Or press enter and I'll create `./ticket-templates` in your current folder
+Use AskUserQuestion:
 
-If the folder already has tickets in it from a previous run, I'll ask before overwriting."
+**Use AskUserQuestion:**
+- question: "Where should I save your tickets and templates?"
+- header: "Output folder"
+- multiSelect: false
+- options:
+  - label: "Use ./ticket-templates (Recommended)", description: "Create a ticket-templates folder in your current directory"
+  - label: "Choose a custom path", description: "I'll ask you to type a specific folder path"
+
+If the user selects "Choose a custom path" (or enters a custom path via the Other field), ask in chat:
+"What folder path should I use? (absolute or relative, e.g. `~/Documents/my-templates`)"
+
+If the chosen folder already has tickets in it from a previous run, ask before overwriting.
 
 Create the folder structure:
 ```
@@ -84,15 +109,27 @@ Create the folder structure:
 
 ## Phase 4: Author Filter
 
-Ask:
-"Which tickets should I pull? You probably want option 1 — these are tickets you wrote, which is what we'll analyze for your style:
+Use two AskUserQuestion calls — one for whose tickets to pull, one for the cap:
 
-1. Tickets I **created** (recommended)
-2. Tickets I **reported**
-3. Tickets I **wrote the description for** (uses custom JQL)
-4. **All tickets** in the project (only if you want to analyze the whole team's style)
+**Use AskUserQuestion:**
+- question: "Which tickets should I pull? Option 1 pulls tickets you wrote, which is what we analyze for your style."
+- header: "Author filter"
+- multiSelect: false
+- options:
+  - label: "Tickets I created (Recommended)", description: "JQL: creator = currentUser()"
+  - label: "Tickets I reported", description: "JQL: reporter = currentUser()"
+  - label: "Tickets I wrote the description for", description: "Uses creator as the closest proxy — Jira doesn't expose description author directly"
+  - label: "All tickets in the project", description: "Only choose this if you want to analyze the whole team's style"
 
-Also: cap at how many? Default 500. Type `all` for no cap."
+**Use AskUserQuestion:**
+- question: "How many tickets should I pull at most?"
+- header: "Ticket cap"
+- multiSelect: false
+- options:
+  - label: "500 tickets (Recommended)", description: "Enough for solid pattern analysis without hitting limits"
+  - label: "250 tickets", description: "Faster pull, still usually enough"
+  - label: "100 tickets", description: "Quick run — good for a first test"
+  - label: "No cap", description: "Pull all matching tickets (may take a while on large projects)"
 
 ## Phase 5: Pull Tickets
 
@@ -145,17 +182,23 @@ Report:
 
 ## Phase 7: Pick Issue Types to Template
 
-Ask:
-"Which issue types do you want templates for? You can pick multiple. Just list the numbers:
+Use AskUserQuestion with multiSelect. Build options dynamically from the discovered issue types, sorted by ticket count descending. Include the ticket count in each description. If there are more than 4 issue types, use the top 4 by count — the user can type additional ones via the Other field.
 
-1. Story ({n} tickets)
-2. Bug ({n} tickets)
-3. [etc]
+**Use AskUserQuestion:**
+- question: "Which issue types do you want templates for? Select all that apply. (I need at least 5 tickets per type to find reliable patterns — types with fewer will get a best-guess template.)"
+- header: "Issue types"
+- multiSelect: true
+- options: [dynamically built — one per discovered type, label = type name, description = "{n} tickets"]
 
-Tip: I need at least 5 tickets in a type to find reliable patterns. For types with fewer than 5, I'll build a basic template but it'll be more guess than analysis."
+For any chosen issue type with fewer than 5 tickets, use AskUserQuestion:
 
-For any chosen issue type with fewer than 5 tickets, warn:
-"Only {n} {type} tickets — the template will be more guess than analysis. Build it anyway, or skip?"
+**Use AskUserQuestion:**
+- question: "Only {n} {type} tickets found — the template will be more guess than analysis. What do you want to do?"
+- header: "{type}"
+- multiSelect: false
+- options:
+  - label: "Build it anyway", description: "I'll do my best with limited data"
+  - label: "Skip this type", description: "Skip and move on"
 
 ## Phase 8: Pattern Analysis
 
@@ -177,35 +220,30 @@ For each issue type, identify:
 - **Domain patterns** — feature flags, API/data, deeplinks, audit fixes, etc.
 - **Outliers** — tickets where the description is dominated by content the author *didn't write*: pasted emails, copied Slack threads, vendor doc dumps, audit findings. Exclude from pattern analysis. Also flag minimal tickets (1-3 sentences, no structure) — these are not a useful template.
 
-After analyzing all chosen types, present findings **one type at a time**, waiting for user confirmation:
+After analyzing each issue type, present the findings in chat (patterns, outliers, skipped tickets), then use AskUserQuestion to confirm:
 
----
-"## {Issue Type} ({n} tickets)
+**Use AskUserQuestion:**
+- question: "How do these patterns look for {Issue Type}?"
+- header: "{Issue Type}"
+- multiSelect: false
+- options:
+  - label: "Looks good", description: "Proceed with these patterns"
+  - label: "Make changes", description: "Tell me what to rename, merge, add, or skip in the chat"
 
-I found **{X} pattern(s)**:
-
-**Pattern 1: {Name}** (~{%})
-Structure: {Section1} → {Section2} → {Section3}
-Examples: `{filename}`, `{filename}`
-
-**Pattern 2: {Name}** (~{%})
-[etc]
-
-**Outliers excluded ({n} tickets):** Descriptions dominated by external pasted content — not your writing style.
-
-**Skipping:** {n} minimal tickets (just 1-3 sentences). Let me know if you want a template for these too.
-
-You can:
-- Say **'looks good'** to confirm
-- **Rename**, **merge**, **add**, or **skip** patterns"
----
-
-After all types are confirmed, show a summary table:
+After all types are confirmed, show a summary table in chat:
 
 | # | Template Name | Issue Type | Use Case | ~% |
 |---|---|---|---|---|
 
-Ask: "Ready to build? Reply 'yes' to proceed."
+Then use AskUserQuestion:
+
+**Use AskUserQuestion:**
+- question: "Ready to build these templates?"
+- header: "Build"
+- multiSelect: false
+- options:
+  - label: "Yes, build them", description: "Proceed to template generation"
+  - label: "Make adjustments first", description: "Tell me what to change in the chat"
 
 ## Phase 9: Build Draft Templates
 
@@ -235,45 +273,48 @@ Build **one template at a time**. For each one:
 [sections with placeholders, matching the real tickets exactly]
 ```
 
-Show each draft to the user and ask:
-"Here's the draft for **{Template Name}**:
+Show the draft in chat, then use AskUserQuestion:
 
-{template content}
+**Use AskUserQuestion:**
+- question: "How does the draft look for **{Template Name}**?"
+- header: "Draft review"
+- multiSelect: false
+- options:
+  - label: "Looks good, next template", description: "Move on to the next template"
+  - label: "Sections missing", description: "Tell me which sections to add in the chat"
+  - label: "Remove a section", description: "Tell me which sections to remove in the chat"
+  - label: "Fix placeholder language", description: "Describe what feels off in the chat"
 
-- Any sections I missed?
-- Any sections I included that you don't use?
-- Does the placeholder language feel right?"
-
-Incorporate feedback before the next template.
+Incorporate any feedback before moving to the next template.
 
 ## Phase 10: Formatting Pass
 
 After all draft templates are approved, run a formatting pass on each one **one at a time**.
 
-For each template, ask:
----
-"Now let's capture Jira-specific formatting that doesn't show up in plain text exports.
+For each template, first ask whether panels are used:
 
-**{Template Name}** has these sections:
-{numbered list of section headers}
+**Use AskUserQuestion:**
+- question: "Does **{Template Name}** use any colored Jira panels? (info/blue, note/yellow, warning/orange, tip/green, error/red)"
+- header: "Panels"
+- multiSelect: false
+- options:
+  - label: "No panels", description: "Skip panel annotations for this template"
+  - label: "Yes, some sections use panels", description: "I'll describe which sections and colors in the chat"
 
-**Panels:** Does any section live inside a colored Jira panel?
-- `info` (blue), `note` (yellow), `warning` (orange), `tip` (green), `success` (green), `error` (red)
+If yes, ask in chat:
+"Which sections use panels, and what color? e.g. 'AC → info', 'Current Behavior → error, Expected Behavior → success'"
 
-Just reply with mappings, e.g.:
-- 'AC → info'
-- 'Current Behavior → error, Expected Behavior → success, AC → info'
-- 'none' if you don't use panels here
+Then ask about other Jira formatting:
 
-**Other Jira formatting** in this template?
-- Status badges (colored pill labels)
-- Checklists (interactive checkboxes — usually `[ ]` syntax)
-- Code blocks with specific languages
-- Tables for any section
-- Smart links to other tickets
-- @mentions
-- Anything else?"
----
+**Use AskUserQuestion:**
+- question: "Does **{Template Name}** use any other special Jira formatting?"
+- header: "Formatting"
+- multiSelect: true
+- options:
+  - label: "Checklists", description: "Interactive checkboxes (taskList nodes)"
+  - label: "Tables", description: "One or more sections rendered as tables"
+  - label: "Code blocks", description: "Fenced code with a specific language"
+  - label: "None of the above", description: "No other special formatting"
 
 For each panel mapping, add to the template:
 ```
@@ -282,22 +323,32 @@ For each panel mapping, add to the template:
 <!-- /ADF panel -->
 ```
 
-For other formatting, add a comment above the section describing what to apply:
+For other formatting, add a comment above the section:
 ```
 <!-- ADF: render as a checklist (taskList node) -->
 ```
 
-Show the updated template and ask: "Looks right? Continue to next?"
+Show the updated template in chat, then use AskUserQuestion:
+
+**Use AskUserQuestion:**
+- question: "Does the formatting annotation look right for **{Template Name}**?"
+- header: "Formatting check"
+- multiSelect: false
+- options:
+  - label: "Looks right, continue", description: "Move to the next template"
+  - label: "Something's off", description: "Tell me what to fix in the chat"
 
 ## Phase 11: Validation
 
-For each finished template, generate ONE sample ticket using fake-but-plausible context. Show all samples to the user:
+For each finished template, generate ONE sample ticket using fake-but-plausible context. Show all samples in chat, then use AskUserQuestion:
 
-"Here's a sample ticket built from each template using fake context. Quick sanity check — does each one read like something you'd actually write?
-
-[show each sample]
-
-Anything that feels off? I can fix it now or you can edit the template files later."
+**Use AskUserQuestion:**
+- question: "Do these sample tickets read like something you'd actually write?"
+- header: "Validation"
+- multiSelect: false
+- options:
+  - label: "Yes, they look right", description: "Finalize all templates"
+  - label: "Something feels off", description: "Tell me what to fix in the chat — or you can edit the template files directly later"
 
 ## Phase 12: Final Output
 
