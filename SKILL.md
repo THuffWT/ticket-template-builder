@@ -137,34 +137,34 @@ Build the JQL based on author choice:
 - Wrote description: `project = {KEY} AND reporter = currentUser() ORDER BY created DESC` (closest available — Jira doesn't expose "description author" directly)
 - All: `project = {KEY} ORDER BY created DESC`
 
-**Pagination uses a base64 cursor — follow this exactly. Do not deviate.**
+**Do NOT set `responseContentFormat` — omit it entirely.** Descriptions come back as markdown strings automatically, and setting it breaks pagination on some MCP clients.
 
-**Critical:** Do NOT set `responseContentFormat`. Omitting it means descriptions come back as markdown strings automatically AND the response retains the pagination fields. Setting it to `"markdown"` strips `nextPageToken` and `isLast` from the response, breaking pagination.
-
-**Response structure** (actual, not the schema description):
-```
-{
-  "issues": [ ...list of ticket objects... ],
-  "nextPageToken": "base64encodedcursor...",   ← root level, not inside issues
-  "isLast": false                               ← root level
-}
-```
-
-**For each page:**
-1. Save the raw response immediately to `{output_folder}/_raw-jira-pages/page-{N}.json` before doing anything else — this prevents context overflow on large responses
-2. Read `isLast` from the root of the saved JSON
-3. Read `nextPageToken` from the root of the saved JSON
-4. Count the tickets in `response.issues` and add to running total
-5. Stopping conditions — stop if EITHER is true:
-   - `isLast` is `true`
-   - Running total has reached the cap
-6. Otherwise: make the next call passing `nextPageToken` as the `nextPageToken` parameter
-7. Report progress: "Fetched {n} tickets (page {p})..."
-
-**Call parameters:**
+**Call parameters (every call):**
 - `maxResults: 100` (always)
 - `fields: ["summary", "issuetype", "status", "priority", "description", "created", "updated", "creator", "reporter"]`
-- `nextPageToken`: omit on the first call; pass the exact base64 string from the previous response on subsequent calls
+- Do not set `responseContentFormat`
+
+**Save each raw page immediately** to `{output_folder}/_raw-jira-pages/page-{N}.json` before processing — this prevents context overflow.
+
+**After saving, detect the response format and paginate accordingly:**
+
+The response structure varies by MCP client. Check which format you got:
+
+**Format A** — `issues` is a list at the root, with `nextPageToken` and `isLast` also at root:
+```json
+{ "issues": [...], "nextPageToken": "base64...", "isLast": false }
+```
+→ Pass `nextPageToken` as-is on the next call. Stop when `isLast` is `true` or cap reached.
+
+**Format B** — `issues` is an object with a `nodes` array (no cursor returned):
+```json
+{ "issues": { "nodes": [...], "totalCount": 100, "webUrl": "..." } }
+```
+→ Use keyset pagination: take the `created` timestamp of the **last ticket** in `nodes`, then add `AND created < "{that_timestamp}"` to the JQL on the next call. Stop when `nodes.length < 100` or cap reached.
+
+**On timeout:** retry the same call once before giving up.
+
+**Progress:** report after each page: "Fetched {n} tickets (page {p})..."
 
 After all pages are fetched, process the saved JSON files to write individual ticket files to `{output_folder}/tickets/`. For each ticket in `response.issues`, save to `{output_folder}/tickets/{KEY}-{number} - {sanitized-title}.md`:
 
