@@ -36,7 +36,7 @@ The installer will ask which AI tool you're using (Claude Code, Cursor, or Codex
 4. Confirm the patterns it finds
 5. Get your finished templates in the folder you chose
 
-Takes about 20–40 minutes depending on how many tickets you have.
+Takes about 15 minutes.
 
 ---
 

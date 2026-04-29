@@ -9,7 +9,7 @@ description: >-
 
 # Ticket Template Builder
 
-**Announce at start:** "I'm using the ticket-template-builder skill to build your ticket templates. This will take 20–40 minutes depending on how many tickets you have. I'll ask you questions along the way — you can stop and resume anytime."
+**Announce at start:** "I'm using the ticket-template-builder skill to build your ticket templates. This should take about 15 minutes. I'll ask you questions along the way — you can stop and resume anytime."
 
 This skill takes a product manager from zero to a personal library of Jira ticket templates by analyzing the tickets they've already written. It is project-agnostic — works with any Jira project at any company.
 
