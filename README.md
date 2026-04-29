@@ -72,4 +72,4 @@ Copy the templates folder into your team's docs (Notion, Confluence, GitHub, etc
 
 ## Questions?
 
-Contact Tyler Huffman at tyler.huffman@willowtreeapps.com.
+Contact Tyler Huffman on Slack at @T-Huff.
