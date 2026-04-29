@@ -137,36 +137,28 @@ Build the JQL based on author choice:
 - Wrote description: `project = {KEY} AND reporter = currentUser() ORDER BY created DESC` (closest available — Jira doesn't expose "description author" directly)
 - All: `project = {KEY} ORDER BY created DESC`
 
-**Use a two-pass approach. Do not include `description` in the pagination pass — it makes responses too large and causes unreliable behavior.**
+**Pagination uses numeric offset — follow this exactly.**
 
-### Pass 1: Collect all ticket keys (metadata only)
+The MCP response never contains a `nextPageToken`. Do not look for one. The real last-page signal is receiving fewer than 100 results in a page.
 
-Call `searchJiraIssuesUsingJql` with these parameters on every call:
-- `maxResults: 100` (the API maximum — always use this)
-- `fields: ["summary", "issuetype", "status", "priority", "created", "updated", "creator", "reporter"]` — **no `description`**
-- `nextPageToken`: omit on the first call; on subsequent calls, pass the value returned by the previous response
+Call `searchJiraIssuesUsingJql` with these parameters:
+- `maxResults: 100` (always)
+- `responseContentFormat: "markdown"`
+- `fields: ["summary", "issuetype", "status", "priority", "description", "created", "updated", "creator", "reporter"]`
+- `nextPageToken`: omit on the first call; pass `"100"` for the second call, `"200"` for the third, etc. (the numeric offset as a string)
 
 **After each response:**
-1. Record the ticket key and metadata for every issue in the page
-2. Add the page's count to your running total
-3. Check: is `nextPageToken` present in the response?
-   - **Yes and total < cap** → make another call with that `nextPageToken`
-   - **No** → last page reached, stop
-   - **Total has reached the cap** → stop
-4. Report progress every 100 tickets: "Collected {n} ticket keys so far..."
+1. Write every ticket in the page to disk immediately (see format below)
+2. Add the page's result count to your running total
+3. Stopping conditions — stop if EITHER is true:
+   - The page returned **fewer than 100 results** (this is the last page)
+   - Running total has reached the cap
+4. Otherwise increment the offset by 100 and make the next call
+5. Report progress every 100 tickets: "Fetched {n} tickets so far..."
 
-**Do not stop early** because a page returned fewer than 100 results — the last page will always be smaller. Only stop when `nextPageToken` is absent or the cap is reached.
+**Do not stop just because a page is exactly 100 results** — that means there are likely more. Only a page shorter than 100 means you're done.
 
-When done: "✓ Collected {n} ticket keys. Now fetching descriptions..."
-
-### Pass 2: Fetch descriptions and write files
-
-For each ticket key collected in Pass 1, call `getJiraIssue`:
-- `issueIdOrKey`: the ticket key
-- `fields: ["summary", "issuetype", "status", "priority", "description", "created", "updated", "creator", "reporter"]`
-- `responseContentFormat: "markdown"` — returns the description already in markdown
-
-Immediately after each fetch, write to `{output_folder}/tickets/{KEY}-{number} - {sanitized-title}.md`:
+For each ticket, save to `{output_folder}/tickets/{KEY}-{number} - {sanitized-title}.md`:
 
 ```markdown
 # {KEY}-{number}: {title}
@@ -185,12 +177,10 @@ Immediately after each fetch, write to `{output_folder}/tickets/{KEY}-{number} -
 
 ## Jira Description Markdown
 
-{description from getJiraIssue response}
+{description — already in markdown because responseContentFormat: "markdown" was set}
 ```
 
-Report progress every 50 tickets: "Saved {n} / {total} tickets..."
-
-Show a final count when done: "✓ Saved {n} tickets to {output_folder}/tickets/"
+Show a final count when done: "✓ Pulled {n} tickets."
 
 ## Phase 6: Organize by Issue Type
 
