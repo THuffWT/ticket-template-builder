@@ -170,7 +170,7 @@ Show progress every 50 tickets.
 
 Read the `Issue Type:` line from each ticket's metadata. Auto-discover all unique issue types — don't assume Story/Bug/Task. Custom types like Incident, Initiative, Change Request all count.
 
-Create `{output_folder}/organized/{Issue Type}/` for each type and move files in.
+Create `{output_folder}/organized/{Issue Type}/` for each type. For each ticket file: write it to the organized subfolder, then **delete the original from `tickets/`**. Do not leave copies in both locations — after this phase the `tickets/` folder should be empty.
 
 Report:
 "✓ Organized {N} tickets into {X} folders:
@@ -227,14 +227,28 @@ These are illustrative categories, not an exhaustive list. Use what you find in 
 
 For each ticket, write down its functional type. **This classification is the primary basis for grouping into sub-templates** — not section headers.
 
-### Step 2: Look for structural variants within each functional type
+### Step 2: Apply the merge test before splitting into sub-templates
 
-Once tickets are grouped by functional type, look at each group for:
+After classifying by functional type, apply this test to every potential split:
+
+**"Would a PM filling out template A need meaningfully different context or structure than template B?"**
+
+- If the only differences are slot values (platform name, data source name, flag name, screen name) → **merge into one template** with flexible placeholders
+- If the structural skeleton — section order, required sections, key decision points — is genuinely different → **keep separate**
+
+Examples of what to merge vs. split:
+- "UI build with Figma link" vs. "UI build without Figma link" → **merge** (make Figma optional in one template)
+- "Feature flag using Remote Config" vs. "Feature flag using a backend service" → **merge** (same structure, different slot)
+- "Feature flag" vs. "Deeplink setup" → **split** (completely different structure and context requirements)
+- "BFF resolver build" vs. "CMS field migration" → likely **merge** (both are backend data tickets with the same skeleton)
+
+**Target sub-template count:** 3–5 for a high-volume issue type (50+ tickets). If you're finding 6+, apply the merge test more aggressively. If you're finding only 1–2, you likely skipped the functional classification step.
+
+### Step 3: Look for structural variants within each kept group
+
+Once groups pass the merge test, look at each for:
 - **Section headers and order** — what sections appear, in what sequence
 - **Voice/tone** — "we want to", imperative, passive, etc.
-- **Sub-variants within a type** — e.g. within "UI build", are there tickets that always include a Figma link and tickets that never do? That's one template, not two.
-
-**Expected sub-template count:** For a high-volume issue type (50+ tickets), expect 3–7 sub-templates if the work is varied. Finding only 1–2 sub-templates for a large ticket set almost always means the functional classification step was skipped.
 
 ### Step 3: Flag outliers
 
