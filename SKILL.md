@@ -137,8 +137,24 @@ Build the JQL based on author choice:
 - Wrote description: `project = {KEY} AND reporter = currentUser() ORDER BY created DESC` (closest available — Jira doesn't expose "description author" directly)
 - All: `project = {KEY} ORDER BY created DESC`
 
-Fetch in batches of 100 using `searchJiraIssuesUsingJql`, paginating until done or limit hit. Pull these fields:
-`summary, issuetype, status, priority, description, created, updated, creator, reporter, project`
+**Pagination is cursor-based — follow this exactly:**
+
+Call `searchJiraIssuesUsingJql` with these parameters on every call:
+- `maxResults: 100` (the API maximum — always use this)
+- `responseContentFormat: "markdown"` (returns descriptions already in markdown — do not omit this)
+- `fields: ["summary", "issuetype", "status", "priority", "description", "created", "updated", "creator", "reporter", "project"]`
+- `nextPageToken`: omit on the first call; on subsequent calls, pass the value returned by the previous response
+
+**After each response:**
+1. Write the tickets from that page to disk (see format below)
+2. Add the page's count to your running total
+3. Check: is `nextPageToken` present in the response?
+   - **Yes and total < cap** → make another call with that `nextPageToken`
+   - **No** → you've reached the last page, stop
+   - **Total has reached the cap** → stop, do not make another call
+4. Report progress every 100 tickets: "Fetched {n} tickets so far..."
+
+**Do not stop early** because a page returned fewer than 100 results — the last page will always be smaller. Only stop when `nextPageToken` is absent or the cap is reached.
 
 For each ticket, save to `{output_folder}/tickets/{KEY}-{number} - {sanitized-title}.md`:
 
@@ -159,12 +175,10 @@ For each ticket, save to `{output_folder}/tickets/{KEY}-{number} - {sanitized-ti
 
 ## Jira Description Markdown
 
-{description_converted_from_ADF_to_markdown}
+{description — already in markdown because responseContentFormat: "markdown" was set}
 ```
 
-**ADF → markdown conversion**: descriptions come back as Atlassian Document Format JSON. Convert: paragraphs → text, bulletList/listItem → `* item`, orderedList → `1. item`, heading levels → `#`/`##`/`###`, strong → `**text**`, em → `_text_`, code → backticks, codeBlock → fenced code, hardBreak → newline, inlineCard/blockCard → `[url](url)`, panel nodes → flatten to plain content (note: panels don't survive export — that's why this skill asks about them later).
-
-Show progress every 50 tickets.
+Show a final count when done: "✓ Pulled {n} tickets."
 
 ## Phase 6: Organize by Issue Type
 
