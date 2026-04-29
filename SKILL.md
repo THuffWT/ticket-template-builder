@@ -112,13 +112,12 @@ Create the folder structure:
 Use two AskUserQuestion calls — one for whose tickets to pull, one for the cap:
 
 **Use AskUserQuestion:**
-- question: "Which tickets should I pull? Option 1 pulls tickets you wrote, which is what we analyze for your style."
+- question: "Which tickets should I pull? Option 1 pulls tickets you reported, which is what we analyze for your style."
 - header: "Author filter"
 - multiSelect: false
 - options:
-  - label: "Tickets I created (Recommended)", description: "JQL: creator = currentUser()"
-  - label: "Tickets I reported", description: "JQL: reporter = currentUser()"
-  - label: "Tickets I wrote the description for", description: "Uses creator as the closest proxy — Jira doesn't expose description author directly"
+  - label: "Tickets I reported (Recommended)", description: "JQL: reporter = currentUser()"
+  - label: "Tickets I wrote the description for", description: "Uses reporter as the closest proxy — Jira doesn't expose description author directly"
   - label: "All tickets in the project", description: "Only choose this if you want to analyze the whole team's style"
 
 **Use AskUserQuestion:**
@@ -134,9 +133,8 @@ Use two AskUserQuestion calls — one for whose tickets to pull, one for the cap
 ## Phase 5: Pull Tickets
 
 Build the JQL based on author choice:
-- Created: `project = {KEY} AND creator = currentUser() ORDER BY created DESC`
 - Reported: `project = {KEY} AND reporter = currentUser() ORDER BY created DESC`
-- Wrote description: `project = {KEY} AND creator = currentUser() ORDER BY created DESC` (closest available — Jira doesn't expose "description author" directly)
+- Wrote description: `project = {KEY} AND reporter = currentUser() ORDER BY created DESC` (closest available — Jira doesn't expose "description author" directly)
 - All: `project = {KEY} ORDER BY created DESC`
 
 Fetch in batches of 100 using `searchJiraIssuesUsingJql`, paginating until done or limit hit. Pull these fields:
