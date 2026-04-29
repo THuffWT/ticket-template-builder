@@ -137,26 +137,36 @@ Build the JQL based on author choice:
 - Wrote description: `project = {KEY} AND reporter = currentUser() ORDER BY created DESC` (closest available — Jira doesn't expose "description author" directly)
 - All: `project = {KEY} ORDER BY created DESC`
 
-**Pagination is cursor-based — follow this exactly:**
+**Use a two-pass approach. Do not include `description` in the pagination pass — it makes responses too large and causes unreliable behavior.**
+
+### Pass 1: Collect all ticket keys (metadata only)
 
 Call `searchJiraIssuesUsingJql` with these parameters on every call:
 - `maxResults: 100` (the API maximum — always use this)
-- `responseContentFormat: "markdown"` (returns descriptions already in markdown — do not omit this)
-- `fields: ["summary", "issuetype", "status", "priority", "description", "created", "updated", "creator", "reporter", "project"]`
+- `fields: ["summary", "issuetype", "status", "priority", "created", "updated", "creator", "reporter"]` — **no `description`**
 - `nextPageToken`: omit on the first call; on subsequent calls, pass the value returned by the previous response
 
 **After each response:**
-1. Write the tickets from that page to disk (see format below)
+1. Record the ticket key and metadata for every issue in the page
 2. Add the page's count to your running total
 3. Check: is `nextPageToken` present in the response?
    - **Yes and total < cap** → make another call with that `nextPageToken`
-   - **No** → you've reached the last page, stop
-   - **Total has reached the cap** → stop, do not make another call
-4. Report progress every 100 tickets: "Fetched {n} tickets so far..."
+   - **No** → last page reached, stop
+   - **Total has reached the cap** → stop
+4. Report progress every 100 tickets: "Collected {n} ticket keys so far..."
 
 **Do not stop early** because a page returned fewer than 100 results — the last page will always be smaller. Only stop when `nextPageToken` is absent or the cap is reached.
 
-For each ticket, save to `{output_folder}/tickets/{KEY}-{number} - {sanitized-title}.md`:
+When done: "✓ Collected {n} ticket keys. Now fetching descriptions..."
+
+### Pass 2: Fetch descriptions and write files
+
+For each ticket key collected in Pass 1, call `getJiraIssue`:
+- `issueIdOrKey`: the ticket key
+- `fields: ["summary", "issuetype", "status", "priority", "description", "created", "updated", "creator", "reporter"]`
+- `responseContentFormat: "markdown"` — returns the description already in markdown
+
+Immediately after each fetch, write to `{output_folder}/tickets/{KEY}-{number} - {sanitized-title}.md`:
 
 ```markdown
 # {KEY}-{number}: {title}
@@ -175,10 +185,12 @@ For each ticket, save to `{output_folder}/tickets/{KEY}-{number} - {sanitized-ti
 
 ## Jira Description Markdown
 
-{description — already in markdown because responseContentFormat: "markdown" was set}
+{description from getJiraIssue response}
 ```
 
-Show a final count when done: "✓ Pulled {n} tickets."
+Report progress every 50 tickets: "Saved {n} / {total} tickets..."
+
+Show a final count when done: "✓ Saved {n} tickets to {output_folder}/tickets/"
 
 ## Phase 6: Organize by Issue Type
 
