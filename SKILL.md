@@ -206,17 +206,40 @@ For each chosen issue type:
 - If the type has 30 or fewer tickets: read ALL of them
 - If more than 30: sample 30 spread across project key prefixes AND subject areas (look at the variety in filenames). Goal is variety, not arithmetic spread.
 
-**Context window protection:** for any type with 50+ tickets, dispatch a subagent (Explore type) to read and analyze the tickets. Have it return: section headers used, section order, structural variants, voice/tone, domain patterns, outlier filenames. Do not read 50+ files inline.
+**Context window protection:** for any type with 50+ tickets, dispatch a subagent (Explore type) to read and analyze the tickets. Give the subagent the full Step 1 functional type classification instructions and ask it to return: functional type for each ticket, section structure per functional group, voice/tone per group, and outlier filenames. Do not read 50+ files inline.
 
 Read only the `## Jira Description Markdown` section of each file.
 
-For each issue type, identify:
-- **Section headers** — what's used? (H1, H2, H3, bold-only)
-- **Section order** — typical sequence
-- **Structural variants** — 1 dominant pattern, or 2-3 sub-patterns?
+### Step 1: Functional type classification (do this first)
+
+**Do not start with section headers.** Most tickets share the same section structure (Overview → Details → AC), so structural analysis alone collapses everything into one group. The real signal is in *what kind of work the ticket is doing*.
+
+Read each ticket's title and Overview bullet(s) and classify it by functional type. Look for these signals:
+
+- **Flag / conditional logic** — flag field names and value states (e.g. `flag = true | SHOW`, `flag = false | HIDE`), Remote Config or feature flag references, show/hide logic
+- **Deeplink / navigation** — "deeplink" or "deeplinking" in title, URL slug patterns (e.g. `app://screen`), named entry points (push notifications, in-app messages, email/Branch links), fallback/error handling per deeplink
+- **Fix / remediation / audit** — audit reference (e.g. EY, pen test, accessibility audit), finding IDs or severity codes (H1, M4, L2, HUB-ID), "from the X audit" phrasing, prescribed fix language
+- **UI / UX build** — Figma link, named UI states (Main State, Loading State, Empty State, Guest State, Error State), screen or component name as the subject
+- **Backend / API / data source** — data source references (CMS, remote config service, third-party API), field names in backticks, resolver/endpoint/query descriptions, field migration lists
+- **Analytics** — analytics event names, tracking call descriptions, parameter lists, platform-specific SDK references
+
+These are illustrative categories, not an exhaustive list. Use what you find in the tickets. If the user's tickets show a different split (e.g. "infrastructure", "security", "copy change"), name and use those instead.
+
+For each ticket, write down its functional type. **This classification is the primary basis for grouping into sub-templates** — not section headers.
+
+### Step 2: Look for structural variants within each functional type
+
+Once tickets are grouped by functional type, look at each group for:
+- **Section headers and order** — what sections appear, in what sequence
 - **Voice/tone** — "we want to", imperative, passive, etc.
-- **Domain patterns** — feature flags, API/data, deeplinks, audit fixes, etc.
-- **Outliers** — tickets where the description is dominated by content the author *didn't write*: pasted emails, copied Slack threads, vendor doc dumps, audit findings. Exclude from pattern analysis. Also flag minimal tickets (1-3 sentences, no structure) — these are not a useful template.
+- **Sub-variants within a type** — e.g. within "UI build", are there tickets that always include a Figma link and tickets that never do? That's one template, not two.
+
+**Expected sub-template count:** For a high-volume issue type (50+ tickets), expect 3–7 sub-templates if the work is varied. Finding only 1–2 sub-templates for a large ticket set almost always means the functional classification step was skipped.
+
+### Step 3: Flag outliers
+
+- **Content the author didn't write**: pasted emails, copied Slack threads, vendor doc dumps, audit report pastes — exclude from analysis
+- **Minimal tickets** (1–3 sentences, no structure) — not a useful template base; flag them separately
 
 After analyzing each issue type, present the findings in chat (patterns, outliers, skipped tickets), then use AskUserQuestion to confirm:
 
