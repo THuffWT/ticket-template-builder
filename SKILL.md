@@ -137,35 +137,43 @@ Build the JQL based on author choice:
 - Wrote description: `project = {KEY} AND reporter = currentUser() ORDER BY created DESC` (closest available — Jira doesn't expose "description author" directly)
 - All: `project = {KEY} ORDER BY created DESC`
 
-**Pagination uses numeric offset — follow this exactly.**
+**Pagination uses a base64 cursor — follow this exactly. Do not deviate.**
 
-The MCP response never contains a `nextPageToken`. Do not look for one. The real last-page signal is receiving fewer than 100 results in a page.
+**Critical:** Do NOT set `responseContentFormat`. Omitting it means descriptions come back as markdown strings automatically AND the response retains the pagination fields. Setting it to `"markdown"` strips `nextPageToken` and `isLast` from the response, breaking pagination.
 
-Call `searchJiraIssuesUsingJql` with these parameters:
-- `maxResults: 100` (always)
-- `responseContentFormat: "markdown"`
-- `fields: ["summary", "issuetype", "status", "priority", "description", "created", "updated", "creator", "reporter"]`
-- `nextPageToken`: omit on the first call; pass `"100"` for the second call, `"200"` for the third, etc. (the numeric offset as a string)
+**Response structure** (actual, not the schema description):
+```
+{
+  "issues": [ ...list of ticket objects... ],
+  "nextPageToken": "base64encodedcursor...",   ← root level, not inside issues
+  "isLast": false                               ← root level
+}
+```
 
-**After each response:**
-1. Write every ticket in the page to disk immediately (see format below)
-2. Add the page's result count to your running total
-3. Stopping conditions — stop if EITHER is true:
-   - The page returned **fewer than 100 results** (this is the last page)
+**For each page:**
+1. Save the raw response immediately to `{output_folder}/_raw-jira-pages/page-{N}.json` before doing anything else — this prevents context overflow on large responses
+2. Read `isLast` from the root of the saved JSON
+3. Read `nextPageToken` from the root of the saved JSON
+4. Count the tickets in `response.issues` and add to running total
+5. Stopping conditions — stop if EITHER is true:
+   - `isLast` is `true`
    - Running total has reached the cap
-4. Otherwise increment the offset by 100 and make the next call
-5. Report progress every 100 tickets: "Fetched {n} tickets so far..."
+6. Otherwise: make the next call passing `nextPageToken` as the `nextPageToken` parameter
+7. Report progress: "Fetched {n} tickets (page {p})..."
 
-**Do not stop just because a page is exactly 100 results** — that means there are likely more. Only a page shorter than 100 means you're done.
+**Call parameters:**
+- `maxResults: 100` (always)
+- `fields: ["summary", "issuetype", "status", "priority", "description", "created", "updated", "creator", "reporter"]`
+- `nextPageToken`: omit on the first call; pass the exact base64 string from the previous response on subsequent calls
 
-For each ticket, save to `{output_folder}/tickets/{KEY}-{number} - {sanitized-title}.md`:
+After all pages are fetched, process the saved JSON files to write individual ticket files to `{output_folder}/tickets/`. For each ticket in `response.issues`, save to `{output_folder}/tickets/{KEY}-{number} - {sanitized-title}.md`:
 
 ```markdown
 # {KEY}-{number}: {title}
 
 ## Jira Metadata
 
-- Link: {site_url}/browse/{KEY}-{number}
+- Link: {ticket.webUrl}
 - Project: {project_name}
 - Issue Type: {issue_type}
 - Status: {status}
@@ -177,10 +185,10 @@ For each ticket, save to `{output_folder}/tickets/{KEY}-{number} - {sanitized-ti
 
 ## Jira Description Markdown
 
-{description — already in markdown because responseContentFormat: "markdown" was set}
+{ticket.fields.description — already a markdown string}
 ```
 
-Show a final count when done: "✓ Pulled {n} tickets."
+Show a final count when done: "✓ Pulled {n} tickets across {p} pages."
 
 ## Phase 6: Organize by Issue Type
 
