@@ -1,0 +1,17 @@
+# Optional config — the skill will create this automatically after your first run.
+# You don't need to fill this in manually unless you want to skip the question phase.
+#
+# Location: ~/.ticket-templates/config.yaml
+
+jira:
+  # Your Jira project key (e.g. DQLS, PROJ, MYTEAM)
+  project_key: ""
+  # Your Atlassian account email (the skill auto-detects this)
+  account: ""
+
+# Where the skill saves your tickets and templates
+output_folder: ""
+
+# Filled in automatically by the skill
+last_run: ""
+templates_built: []
