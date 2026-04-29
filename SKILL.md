@@ -144,27 +144,28 @@ Build the JQL based on author choice:
 - `fields: ["summary", "issuetype", "status", "priority", "description", "created", "updated", "creator", "reporter"]`
 - Do not set `responseContentFormat`
 
-**Save each raw page immediately** to `{output_folder}/_raw-jira-pages/page-{N}.json` before processing — this prevents context overflow.
+**Save each raw page immediately** to `{output_folder}/_raw-jira-pages/page-{N}.json` before doing anything else — this prevents context overflow on large responses.
 
-**After saving, detect the response format and paginate accordingly:**
+**After saving each page, follow these steps in order:**
 
-The response structure varies by MCP client. Check which format you got:
+1. Extract the tickets from the page. They may be in `response.issues` (a list) or `response.issues.nodes` (an array inside an object) — use whichever is present.
 
-**Format A** — `issues` is a list at the root, with `nextPageToken` and `isLast` also at root:
-```json
-{ "issues": [...], "nextPageToken": "base64...", "isLast": false }
-```
-→ Pass `nextPageToken` as-is on the next call. Stop when `isLast` is `true` or cap reached.
+2. Count the tickets in this page. Add to your running total.
 
-**Format B** — `issues` is an object with a `nodes` array (no cursor returned):
-```json
-{ "issues": { "nodes": [...], "totalCount": 100, "webUrl": "..." } }
-```
-→ Use keyset pagination: take the `created` timestamp of the **last ticket** in `nodes`, then add `AND created < "{that_timestamp}"` to the JQL on the next call. Stop when `nodes.length < 100` or cap reached.
+3. **Determine the next page token** — check in this order:
+   - If `response.nextPageToken` exists → pass it as `nextPageToken` on the next call
+   - Otherwise → take the `created` timestamp of the **last ticket** in the page and add `AND created < "{that_timestamp}"` to the JQL on the next call
 
-**On timeout:** retry the same call once before giving up.
+4. **Stop if ANY of these are true:**
+   - This page had fewer than 100 tickets (it's the last page)
+   - `response.isLast` is `true`
+   - Running total has reached the cap
 
-**Progress:** report after each page: "Fetched {n} tickets (page {p})..."
+5. Otherwise make the next call and repeat.
+
+6. Report progress: "Fetched {n} tickets (page {p})..."
+
+**On timeout:** retry the same call once with identical parameters before giving up.
 
 After all pages are fetched, process the saved JSON files to write individual ticket files to `{output_folder}/tickets/`. For each ticket in `response.issues`, save to `{output_folder}/tickets/{KEY}-{number} - {sanitized-title}.md`:
 
