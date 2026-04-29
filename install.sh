@@ -31,7 +31,7 @@ if [ -z "$PLATFORM" ]; then
   echo "    2) Cursor"
   echo "    3) Codex"
   echo ""
-  read -rp "  Enter 1, 2, or 3: " choice
+  read -rp "  Enter 1, 2, or 3: " choice </dev/tty
   case "$choice" in
     1) PLATFORM="claude-code" ;;
     2) PLATFORM="cursor" ;;
